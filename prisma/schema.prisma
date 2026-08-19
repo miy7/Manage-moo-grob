@@ -1,0 +1,355 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+enum IngredientUnit {
+  KG
+  G
+  LITER
+  ML
+  PIECE
+  PACK
+}
+
+enum MovementType {
+  STOCK_IN
+  STOCK_OUT
+  ADJUSTMENT
+  WASTE
+  STOCK_COUNT
+  SALE_DEDUCTION
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  PROMPTPAY
+  CASH
+}
+
+enum AuditAction {
+  USER_CREATE
+  USER_UPDATE
+  ROLE_CHANGE
+  PRICE_CHANGE
+  COST_CHANGE
+  STOCK_IN
+  STOCK_OUT
+  STOCK_ADJUSTMENT
+  WASTE
+  ORDER_COMPLETE
+  ORDER_CANCEL
+  PAYMENT_SUCCESS
+}
+
+/// Better Auth: user table (extended with application fields).
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          Role      @default(STAFF)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions           Session[]
+  accounts           Account[]
+  orders             Order[]
+  inventoryMovements InventoryMovement[]
+  costHistories      CostHistory[]
+  auditLogs          AuditLog[]
+
+  @@index([role])
+  @@map("users")
+}
+
+/// Better Auth: session table.
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Better Auth: account table (holds hashed credential password).
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+/// Better Auth: verification table.
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+model ProductCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@map("product_categories")
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  sku          String   @unique
+  categoryId   String?
+  sellingPrice Decimal  @db.Decimal(12, 2)
+  unit         String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  category   ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  recipe     Recipe?
+  orderItems OrderItem[]
+
+  @@index([categoryId])
+  @@index([active])
+  @@map("products")
+}
+
+model Ingredient {
+  id           String         @id @default(cuid())
+  name         String
+  sku          String         @unique
+  unit         IngredientUnit
+  currentStock Decimal        @default(0) @db.Decimal(14, 4)
+  minimumStock Decimal        @default(0) @db.Decimal(14, 4)
+  costPerUnit  Decimal        @default(0) @db.Decimal(12, 4)
+  supplier     String?
+  active       Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  recipeItems   RecipeItem[]
+  movements     InventoryMovement[]
+  costHistories CostHistory[]
+
+  @@index([active])
+  @@map("ingredients")
+}
+
+model Recipe {
+  id          String   @id @default(cuid())
+  productId   String   @unique
+  yieldQty    Decimal  @default(1) @db.Decimal(14, 4)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  items   RecipeItem[]
+
+  @@map("recipes")
+}
+
+model RecipeItem {
+  id           String         @id @default(cuid())
+  recipeId     String
+  ingredientId String
+  quantity     Decimal        @db.Decimal(14, 4)
+  unit         IngredientUnit
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([recipeId, ingredientId])
+  @@index([ingredientId])
+  @@map("recipe_items")
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  orderNumber   String        @unique
+  staffId       String
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  totalCost     Decimal       @default(0) @db.Decimal(12, 2)
+  paymentStatus PaymentStatus @default(PENDING)
+  orderStatus   OrderStatus   @default(PENDING_PAYMENT)
+  stockDeducted Boolean       @default(false)
+  note          String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  completedAt   DateTime?
+
+  staff     User                @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  items     OrderItem[]
+  payments  Payment[]
+  movements InventoryMovement[]
+
+  @@index([staffId])
+  @@index([createdAt])
+  @@index([orderStatus])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Decimal  @db.Decimal(14, 4)
+  unitPrice Decimal  @db.Decimal(12, 2)
+  subtotal  Decimal  @db.Decimal(12, 2)
+  unitCost  Decimal  @default(0) @db.Decimal(12, 4)
+  createdAt DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model Payment {
+  id                   String        @id @default(cuid())
+  orderId              String
+  method               PaymentMethod
+  amount               Decimal       @db.Decimal(12, 2)
+  status               PaymentStatus @default(PENDING)
+  transactionReference String?       @unique
+  qrPayload            String?
+  paidAt               DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status])
+  @@map("payments")
+}
+
+model InventoryMovement {
+  id           String       @id @default(cuid())
+  ingredientId String
+  type         MovementType
+  quantity     Decimal      @db.Decimal(14, 4)
+  stockBefore  Decimal      @db.Decimal(14, 4)
+  stockAfter   Decimal      @db.Decimal(14, 4)
+  unitCost     Decimal?     @db.Decimal(12, 4)
+  reason       String?
+  orderId      String?
+  createdById  String
+  createdAt    DateTime     @default(now())
+
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  order      Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdBy  User       @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([ingredientId])
+  @@index([orderId])
+  @@index([createdAt])
+  @@map("inventory_movements")
+}
+
+model CostHistory {
+  id           String   @id @default(cuid())
+  ingredientId String
+  oldCost      Decimal  @db.Decimal(12, 4)
+  newCost      Decimal  @db.Decimal(12, 4)
+  changedById  String
+  changedAt    DateTime @default(now())
+
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  changedBy  User       @relation(fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([ingredientId])
+  @@index([changedAt])
+  @@map("cost_history")
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  userId    String?
+  action    AuditAction
+  entity    String
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}

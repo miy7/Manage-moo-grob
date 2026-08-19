@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 
 import { Role } from "@/generated/prisma/enums";
@@ -35,6 +36,23 @@ export const auth = betterAuth({
         required: false,
         defaultValue: true,
         input: false,
+      },
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        /** Disabled accounts must not be able to obtain a session. */
+        before: async (session) => {
+          const user = await prisma.user.findUnique({
+            where: { id: session.userId },
+            select: { active: true },
+          });
+          if (!user?.active) {
+            throw new APIError("FORBIDDEN", { message: "บัญชีนี้ถูกปิดใช้งาน" });
+          }
+          return { data: session };
+        },
       },
     },
   },

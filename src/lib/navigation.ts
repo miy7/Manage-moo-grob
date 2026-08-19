@@ -5,6 +5,7 @@ export type NavItem = { href: string; label: string };
 const STAFF_NAV: readonly NavItem[] = [
   { href: "/pos", label: "ขายหน้าร้าน" },
   { href: "/orders", label: "ออเดอร์" },
+  { href: "/profile", label: "โปรไฟล์" },
 ];
 
 const MANAGER_NAV: readonly NavItem[] = [
@@ -17,13 +18,15 @@ const MANAGER_NAV: readonly NavItem[] = [
   { href: "/inventory", label: "สต็อก" },
   { href: "/costs", label: "ต้นทุน" },
   { href: "/reports", label: "รายงาน" },
+  { href: "/users", label: "ผู้ใช้งาน" },
+  { href: "/audit-logs", label: "บันทึกระบบ" },
+  { href: "/profile", label: "โปรไฟล์" },
 ];
 
 const OWNER_NAV: readonly NavItem[] = [
-  ...MANAGER_NAV,
-  { href: "/users", label: "ผู้ใช้งาน" },
+  ...MANAGER_NAV.filter((item) => item.href !== "/profile"),
   { href: "/settings", label: "ตั้งค่า" },
-  { href: "/audit-logs", label: "บันทึกระบบ" },
+  { href: "/profile", label: "โปรไฟล์" },
 ];
 
 export function navItemsForRole(role: Role): readonly NavItem[] {

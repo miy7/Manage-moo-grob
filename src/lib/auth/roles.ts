@@ -21,20 +21,29 @@ const ROUTE_PERMISSIONS: Record<string, readonly Role[]> = {
   "/inventory": ADMIN_ROLES,
   "/costs": ADMIN_ROLES,
   "/reports": ADMIN_ROLES,
-  "/users": [Role.OWNER],
+  "/users": ADMIN_ROLES,
+  "/audit-logs": ADMIN_ROLES,
   "/settings": [Role.OWNER],
-  "/audit-logs": [Role.OWNER],
 };
 
+export function hasRole(role: Role, expected: Role): boolean {
+  return role === expected;
+}
+
+export function hasAnyRole(role: Role, expected: readonly Role[]): boolean {
+  return expected.includes(role);
+}
+
+export function isAdminRole(role: Role): boolean {
+  return hasAnyRole(role, ADMIN_ROLES);
+}
+
+/** Longest matching route prefix wins, so nested routes can narrow access. */
 export function canAccessRoute(role: Role, pathname: string): boolean {
   const entry = Object.entries(ROUTE_PERMISSIONS)
     .filter(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))
     .sort((a, b) => b[0].length - a[0].length)[0];
 
   if (!entry) return true;
-  return entry[1].includes(role);
-}
-
-export function isAdminRole(role: Role): boolean {
-  return ADMIN_ROLES.includes(role);
+  return hasAnyRole(role, entry[1]);
 }
